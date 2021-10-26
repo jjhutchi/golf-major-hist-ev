@@ -1,0 +1,130 @@
+---
+title: "analysis"
+author: "Jordan Hutchings"
+date: "25/10/2021"
+output: rmarkdown::github_document
+always_allow_html: true
+---
+
+```{r, echo = FALSE}
+knitr::opts_chunk$set(
+  fig.path = "README_figs/README-"
+)
+```
+
+The main question of interest is simply, how much money would you make from 
+betting $100 on a given tour golfer. This analysis was motivated by the question, 
+if you were to bet $100 on Tiger Woods in each major he competed in, how much 
+money would you have today. 
+
+## Game plan
+1. Scrape betting lines for the Major Champions from here: 
+2. Calculate payoffs per player
+3. Visualizations
+
+The majority of the work here will be to properly scrape the betting odds data 
+and field lists for each of the majors in our dataset. 
+
+Once we have the data, it will simply be a count of each player name, and the 
+sum of their winning odds times $100. 
+
+## Scraping the data 
+We can use `rvest` to collect the names of the players on a webpage. Notice the 
+webpages we are intested in share very simular URL structure. This allows us to 
+rip through each year collecting the table elements and saving into dataframes for 
+easy analysis. 
+
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+pacman::p_load(rvest, dplyr, ggplot2, ggrepel)
+
+# get player list for a given webpage ----
+url <- "https://www.sportsoddshistory.com/golf-main/?y=2021&sa=golf&a=mast&o=r"
+html <- read_html(url)
+tbl <- html %>%
+  html_table()
+tbl[[2]]$Player
+
+# collect all players in the masters ----
+pre_url <- "https://www.sportsoddshistory.com/golf-main/?y="
+post_url <- "&sa=golf&a=mast&o=r"
+
+years <- seq(1985, 2021, 1) #1985 start 
+
+get_data <- function(x){
+  # download html webpage, take names from second table on the page, 
+  # this will break if the table order differs - but it seems to be 
+  # consistent based on checking some webpages. 
+  cat("Collecting Masters ", x, "\n")
+  Sys.sleep(runif(n = 1, 0.5, 1)) # hopefully this is pretty chill of a wait time
+  path <- paste0(pre_url, x, post_url)
+  html <- read_html(path)
+  tbl <- html %>%
+    html_table()
+  player_list <- tbl[[2]]$Player
+  
+  player_list
+}
+
+masters_players <- lapply(years, get_data)
+tbl <- unlist(masters_players, use.names=FALSE)
+tbl <- data.frame(tbl)
+names(tbl) <- "Player"
+
+# collect masters champions and their historical odds ----
+
+major_odds <- "https://www.sportsoddshistory.com/golf-champs/"
+mo <- read_html(major_odds)
+mo <- mo %>%
+  html_table()
+
+masters_odds <- data.frame(mo[1])
+masters_odds <- masters_odds %>%
+  select(Player = Player, Odds = Prior.to...) %>%
+  filter(Player != "Player")
+
+
+# merge datasets ----
+masters_appearences <- tbl %>%
+  group_by(Player) %>%
+  summarise(n = n())
+
+masters_results <- masters_odds %>%
+  mutate(payoff = as.numeric(Odds) + 100) %>%
+  group_by(Player) %>%
+  summarise(payouts = sum(payoff)) %>%
+  left_join(masters_appearences, by = "Player") %>%
+  mutate(profit = payouts - 100 * n,
+         ev = payouts / (100 * n))
+
+```
+
+## Masters Analysis 
+I first used the Masters as a proof of concept. Below are some visualizations of 
+the top players in terms of total profit. 
+
+
+```{r, warning=FALSE, message=FALSE}
+ggplot(masters_results, aes(x = n, y = profit, label = Player)) +
+  geom_hline(yintercept = 0, linetype = "dashed") + 
+  geom_point() + 
+  geom_text_repel(hjust = -0.1, min.segment.length = 0.2, color = "darkgrey") + 
+  theme_classic() + 
+  labs(title = "Historical Payouts if you bet $100 on each player \nin the Masters (1985 - 2021)", 
+       x = "Number of starts", 
+       y = "Profit ($)")
+
+masters_results$Player <- reorder(masters_results$Player, masters_results$profit)
+masters_results %>%
+  ggplot(aes(x=Player, y=profit)) + 
+  geom_segment(aes(x=Player, xend=Player, y=0, yend=profit), size = 1, color = "#ffdf00", alpha = 0.3) + 
+  geom_point(size = 3, color = "#076652") + 
+  coord_flip() + 
+  theme_classic(12) + 
+  labs(title = "Total profit Earned by Placing a $100 bet on each \nPlayer in the maters (1985 - 2021)", 
+        y = "Profit ($)", 
+        x = "") + 
+    geom_abline(xintercept = 0, color = "darkgrey", linetype = "dashed")
+
+
+
+```

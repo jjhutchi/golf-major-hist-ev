@@ -2,7 +2,7 @@
 title: "analysis"
 author: "Jordan Hutchings"
 date: "25/10/2021"
-output: rmarkdown::github_document
+output: html_document
 always_allow_html: true
 ---
 
@@ -30,8 +30,8 @@ sum of their winning odds times $100.
 
 ## Scraping the data 
 We can use `rvest` to collect the names of the players on a webpage. Notice the 
-webpages we are intested in share very simular URL structure. This allows us to 
-rip through each year collecting the table elements and saving into dataframes for 
+webpages we are interested in share very similar URL structure. This allows us to 
+rip through each year collecting the table elements and saving into data frames for 
 easy analysis. 
 
 ```{r, warning=FALSE, message=FALSE, cache=TRUE}
